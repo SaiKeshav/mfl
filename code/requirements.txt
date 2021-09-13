@@ -1,0 +1,10 @@
+absl-py
+tensorboard
+ipdb
+tqdm
+torch==1.7
+sentence-transformers==1.0.4
+jsonlines
+hanziconv
+bs4
+marisa-trie

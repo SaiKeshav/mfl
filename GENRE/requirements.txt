@@ -1,0 +1,9 @@
+unidecode
+requests
+kilt
+fairseq
+transformers
+marisa_trie
+jsonlines
+hanziconv
+bs4
