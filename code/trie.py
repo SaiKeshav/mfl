@@ -24,8 +24,8 @@ def main(unused_argv):
 
   predicate_d, object_d, subject_d, entity_d = {}, {}, {}, {}
 
-  # genre_model = mGENRE.from_pretrained('../models/fairseq_multilingual_entity_disambiguation/', checkpoint_file='model.pt', bpe='sentencepiece', layernorm_embedding=True, sentencepiece_model="spm_256000.model")
-  genre_model = mGENRE.from_pretrained('../models/mbart.cc25.v2/', checkpoint_file='model.pt', bpe='sentencepiece', layernorm_embedding=True, sentencepiece_model="sentence.bpe.model")
+  genre_model = mGENRE.from_pretrained('../models/fairseq_multilingual_entity_disambiguation/', checkpoint_file='model.pt', bpe='sentencepiece', layernorm_embedding=True, sentencepiece_model="spm_256000.model")
+  # genre_model = mGENRE.from_pretrained('../models/mbart.cc25.v2/', checkpoint_file='model.pt', bpe='sentencepiece', layernorm_embedding=True, sentencepiece_model="sentence.bpe.model")
 
   total_triples = 0
   entity_titles = []
@@ -73,15 +73,15 @@ def main(unused_argv):
   if 'fact' in FLAGS.trie_type: 
     encoded_triples = []
     for ptriple in tqdm(ptriples):
-      encoded_triple = [2]+genre_model.encode(ptriple+" >> en").tolist()[1:]
+      encoded_triple = [2]+genre_model.encode(ptriple).tolist()[1:]
       encoded_triple = [t if t < 256001 else 3 for t in encoded_triple]
       if 3 in encoded_triple:
         unk += 1
       encoded_triples.append(encoded_triple)
-    encoded_triples.append([2]+genre_model.encode('None ; None ; None >> en').tolist()[1:])    
+    encoded_triples.append([2]+genre_model.encode('None ; None ; None').tolist()[1:])    
     t = MarisaTrie(encoded_triples)
     if FLAGS.debug:
-      t = MarisaTrie([[2]+genre_model.encode('None ; None ; None >> en').tolist()[1:]])
+      t = MarisaTrie([[2]+genre_model.encode('None ; None ; None').tolist()[1:]])
       pickle.dump(t, open('../data/fact_trie_debug.pkl','wb'))
     else:
       pickle.dump(t, open('../data/fact_trie.pkl','wb'))

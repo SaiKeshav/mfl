@@ -9,11 +9,12 @@ import numpy as np
 
 from collections import Counter
 
-'''Compute scores of all the different models
+'''Compute scores of all the various models
 '''
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('model_dir', '', 'Fact Model path')
+flags.DEFINE_string('data_dir', '../data', 'Data directory path')
 flags.DEFINE_string('predicate2wikidataID', '../data/predicate_id.pkl', 'predicate mapping dict')
 flags.DEFINE_string('entity2wikidataID', '../data/entity_id.pkl', 'entity mapping dict')
 flags.DEFINE_integer('topk', 1, 'Top-k retrieved facts')
@@ -30,25 +31,39 @@ def process_jsonl(fp):
     json_dict = sorted(json_dict, key=lambda x: x['id'])
     return json_dict
 
+def read_gold_facts(fp):
+  gold_facts_d = {}
+  for line in open(fp,'r'):
+    jobj = json.loads(line)
+    gold_facts = [j['fact'] for j in jobj['facts']]
+    sid = jobj['sent_id']
+    if sid in gold_facts_d:
+      continue
+      # assert set(gold_facts) == set(gold_facts_d[sid]), ipdb.set_trace()
+    else:
+      gold_facts_d[sid] = gold_facts 
 
+  return gold_facts_d
+  
 def main(_):
 
-  languages_f = open(f'{FLAGS.model_dir}/../test_languages.txt','r')
-  languages = [line.strip('\n') for line in languages_f]
   
   print('Loding predicate_id_d and entity_id_d...')
   predicate_id_d = pickle.load(open(FLAGS.predicate2wikidataID, 'rb'))
-  entity_id_d = pickle.load(open(FLAGS.entity2wikidataID, 'rb'))
-  entity_id_d[''] = 'Q0'
-  predicate_id_d[''] = 'P0'
-  entity_id_d['None'] = 'Q0'
-  predicate_id_d['None'] = 'P0'
+  entity_id_d = pickle.load(open(FLAGS.entity2wikidataID, 'rb'))  
+  entity_id_d[''] = entity_id_d['None'] = 'Q0'
+  predicate_id_d[''] = predicate_id_d['None'] = 'P0'
 
-  gt_f = open(f'{FLAGS.model_dir}/../test_gold_facts.txt','r')    
-  gt_lines = [[l.strip() for l in line.strip('\n').split('[SEP]')] for line in gt_f]
-
-  ret_f = open(f'{FLAGS.model_dir}/../test_retrieved_facts.txt','r')    
-  ret_lines = [[l.strip() for l in line.strip('\n').split('[SEP]')] for line in ret_f]
+  # gt_lines = []
+  # for sid in open(f'{FLAGS.model_dir}/../sid/test.source','r'):
+  #   gt_lines.append(gold_facts_d[sid])
+  # gt_f = open(f'{FLAGS.model_dir}/../test_gold_facts.txt','r')    
+  # gt_lines = [[l.strip() for l in line.strip('\n').split('[SEP]')] for line in gt_f]
+  
+  gold_facts_d = read_gold_facts(FLAGS.data_dir+'/IndicLink_release.jsonl')
+  gt_lines = [gold_facts_d[sid.strip('\n')] for sid in open(f'{FLAGS.model_dir}/../sid/test.source','r')]
+  languages = [line.strip('\n') for line in open(f'{FLAGS.model_dir}/../test_languages.txt','r')]
+  ret_lines = [[l.strip() for l in line.strip('\n').split('[SEP]')] for line in open(f'{FLAGS.model_dir}/../test_retrieved_facts.txt','r')]
 
   if FLAGS.write_results:
     print(f'Writing results to: {FLAGS.model_dir}/results.txt')
@@ -62,17 +77,12 @@ def main(_):
   if FLAGS.model_dir and os.path.exists(facts_fp):       
     print(f'### Reading {facts_fp}')
     fact_list = process_jsonl(facts_fp)
-  else:
+  else: # useful for checking retrieval performance 
     fact_list = [None]*len(languages)
   
-  total = 0.
-  lang_sum = {}
-  lang_total = {}
-
-  print('Done loading!')
+  total, lang_sum, lang_total = 0., {}, {}
   incorrect_format, incorrect_entities, incorrect_facts = 0, 0, 0
   total_facts, no_facts = 0, 0
-
   pred_rel_counter, gt_rel_counter = [], []
   all_pred_es, all_pred_rs = [], []
 
@@ -85,13 +95,8 @@ def main(_):
           macro_d[gt_pred_id] = [0, 0]
         macro_d[gt_pred_id][1] += 1
 
-  total_gt_facts = 0
-  none_preds = 0
-
   for fact, lang, gt_raw, ret_raw in zip(fact_list, languages, gt_lines, ret_lines):
-
     gt_subjs, gt_preds, gt_objs, gt_facts = set(), set(), set(), set()
-
     for gt_fact in gt_raw:
       gt_subj_id, gt_pred_id, gt_obj_id = gt_fact.split(';')
       if gt_pred_id == 'P0':
@@ -99,8 +104,6 @@ def main(_):
       gt_rel_counter.append(gt_pred_id)
       gt_subjs.add(gt_subj_id); gt_preds.add(gt_pred_id); gt_objs.add(gt_obj_id)
       gt_facts.add(f'{gt_subj_id};{gt_pred_id};{gt_obj_id}')
-
-    total_gt_facts += len(gt_facts)
 
     ret_subjs, ret_preds, ret_objs, ret_facts = [], [], [], []
     for ret_fact in ret_raw:
@@ -112,12 +115,12 @@ def main(_):
       ret_facts.append(f'{ret_subj_id};{ret_pred_id};{ret_obj_id}')
 
     if lang not in lang_sum:
-      lang_sum[lang] = [0, 0, 0, 0, 0]      
+      lang_sum[lang] = 0      
     if lang not in lang_total:
-      lang_total[lang] = np.array([0, 0, 0, 0, 0])
+      lang_total[lang] = 0
     
     if FLAGS.recall:
-      lang_total[lang] += [len(gt_subjs), len(gt_objs), len(gt_preds), len(gt_subjs.union(gt_objs)), len(gt_facts)]
+      lang_total[lang] += len(gt_facts)
       total += len(gt_facts)
     else:
       lang_total[lang] += 1
@@ -201,77 +204,58 @@ def main(_):
         if pred_fact == gold_fact:
           macro_d[gold_rel][0] += 1
     
-    if pred_facts[0] == 'Q0;P0;Q0':
-      none_preds += 1
-
     for pred_fact in set(pred_facts[:FLAGS.topk]):
-      pred_subject, pred_relation, pred_object = pred_fact.split(';')
-      if pred_subject in gt_subjs and pred_subject not in seen_pred_subjs:
-        subj_bool = True
-        lang_sum[lang][0] += 1
-        seen_pred_subjs.add(pred_subject)
-      else:
-        subj_bool = False
+      # pred_subject, pred_relation, pred_object = pred_fact.split(';')
+      # if pred_subject in gt_subjs and pred_subject not in seen_pred_subjs:
+      #   subj_bool = True
+      #   lang_sum[lang][0] += 1
+      #   seen_pred_subjs.add(pred_subject)
+      # else:
+      #   subj_bool = False
 
-      if pred_object in gt_objs and pred_object not in seen_pred_objs:
-        obj_bool = True
-        lang_sum[lang][1] += 1
-        seen_pred_objs.add(pred_object)
-      else:
-        obj_bool = False
+      # if pred_object in gt_objs and pred_object not in seen_pred_objs:
+      #   obj_bool = True
+      #   lang_sum[lang][1] += 1
+      #   seen_pred_objs.add(pred_object)
+      # else:
+      #   obj_bool = False
 
-      if pred_relation in gt_preds and pred_relation not in seen_pred_rels:
-        lang_sum[lang][2] += 1
-        seen_pred_rels.add(pred_relation)
+      # if pred_relation in gt_preds and pred_relation not in seen_pred_rels:
+      #   lang_sum[lang][2] += 1
+      #   seen_pred_rels.add(pred_relation)
               
-      if subj_bool and obj_bool:
-        lang_sum[lang][3] += 1
+      # if subj_bool and obj_bool:
+      #   lang_sum[lang][3] += 1
             
       if pred_fact in gt_facts:
         if FLAGS.write_results:
           results_f.write('Correct\n')
-        lang_sum[lang][4] += 1
+        lang_sum[lang] += 1
       else:
         if FLAGS.write_results:
           results_f.write('Wrong\n')
 
-  print('Total number of None predictions: ', none_preds)  
-  
-  sum_subj, sum_obj, sum_rel, sum_fact, sum_ent, total = 0, 0, 0, 0, 0, 0
+  # sum_subj, sum_obj, sum_rel, sum_fact, sum_ent, total = 0, 0, 0, 0, 0, 0
+  sum_fact, total = 0, 0
+  lang_str, fact_str = '', ''
   performances, languages = [], []
   for lang in lang_sum:
-    subj_correct, obj_correct, rel_correct, ent_correct, fact_correct = lang_sum[lang]
-    sum_ent += ent_correct
-    sum_subj += subj_correct
-    sum_obj += obj_correct
-    sum_rel += rel_correct
+    fact_correct = lang_sum[lang]
     sum_fact += fact_correct
-    total_subj, total_obj, total_pred, total_ent, total_lang = lang_total[lang]
+    total_lang = lang_total[lang]
     total += total_lang
-    subj_acc = subj_correct/total_subj*100
-    obj_acc = obj_correct/total_obj*100
-    rel_acc = rel_correct/total_pred*100
-    ent_acc = ent_correct/total_ent*100
     fact_acc = fact_correct/total_lang*100
-    performances.append(['%.1f'%subj_acc, '%.1f'%obj_acc, 
-                          '%.1f'%rel_acc, '%.1f'%ent_acc, '%.1f'%fact_acc])
     languages.append(lang)
+    lang_str += lang+','
+    fact_str += '%.2f'%fact_acc+','
+  lang_str += 'Avg.'
+  fact_str += '%.1f'%(100*sum_fact/total)
 
-  lang_str, subj_str, obj_str, ent_str, rel_str, fact_str = 'Languages,','Subject,','Object,','Entity,','Relation,','Fact,'
-  for language, performance in zip(languages, performances):
-    lang_str += language+','
-    subj_str += performance[0]+','
-    obj_str += performance[1]+','
-    rel_str += performance[2]+','
-    ent_str += performance[3]+','
-    fact_str += performance[4]+','
-  lang_str = lang_str+'Avg.'
-  subj_str = subj_str+'%.1f'%(100*sum_subj/total)
-  obj_str = obj_str+'%.1f'%(100*sum_obj/total)
-  rel_str = rel_str+'%.1f'%(100*sum_rel/total)
-  ent_str = ent_str+'%.1f'%(100*sum_ent/total)
-  fact_str = fact_str+'%.1f'%(100*sum_fact/total)
-  perf_str = f'{lang_str}\n{subj_str}\n{obj_str}\n{ent_str}\n{rel_str}\n{fact_str}'
+  # for language, performance in zip(languages, performances):
+  #   lang_str += language+','
+  #   fact_str += performance[4]+','
+  # lang_str = ','.join(languages)+'Avg.'
+  # fact_str = fact_str+'%.1f'%(100*sum_fact/total)
   
   avg_macro = 0
   for pred in macro_d:
@@ -283,11 +267,10 @@ def main(_):
   if FLAGS.write_results:
     results_f.close()
 
-  print(perf_str)
+  print(lang_str+'\n'+fact_str)
 
   print('Total Examples = ', total)
   print(f'Total Facts: {total_facts}, Incorrect Facts: {incorrect_facts}, Incorrect Entities: {incorrect_entities}, Incorrect Format: {incorrect_format}')
-  print('Total number of GT facts = ', total_gt_facts)
 
 if __name__ == '__main__':
     app.run(main)

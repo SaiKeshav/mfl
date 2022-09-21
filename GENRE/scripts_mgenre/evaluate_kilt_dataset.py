@@ -172,7 +172,7 @@ def evaluate_kilt_dataset(
             for o in out: 
                 if type(o['text']) != type(""):
                     o['text'] = o['text'][0]
-                o['text'] = o['text'].strip('<unk>')
+                # o['text'] = o['text'].strip('<unk>')
 
             doc["predictions"] = [
                 {
@@ -385,9 +385,9 @@ if __name__ == "__main__":
         "--debug",
         help="Print lots of debugging statements",
         action="store_const",
-        dest="loglevel",
-        const=logging.DEBUG,
-        default=logging.WARNING,
+        dest="debug",
+        const=True,
+        default=False,
     )
     parser.add_argument(
         "-v",
@@ -526,6 +526,9 @@ if __name__ == "__main__":
         else [args.input_path]
     )
 
+    if args.debug:
+        args.output_path = args.output_path+'.debug'
+
     for dataset_filename in datasets_filenames:
 
         logging.info("Loading {}".format(dataset_filename))
@@ -534,9 +537,12 @@ if __name__ == "__main__":
 
         source_lines = open(dataset_filename+'.source','r').readlines()
         target_lines = open(dataset_filename+'.target','r').readlines()        
-        qid_lines = open(os.path.dirname(dataset_filename)+'/../test_gold_facts.txt','r').readlines()
+        # qid_lines = open(os.path.dirname(dataset_filename)+'/../test_gold_facts.txt','r').readlines()
+        qid_lines = ['Q0;P0;Q0']*len(source_lines)
         dataset = []
         for line_no, (s, t, q) in enumerate(zip(source_lines, target_lines, qid_lines)):
+            if args.debug and line_no > 100:
+                break
             s, t, q = s.strip(), t.strip(), q.strip()
             dataset.append({'id': line_no, 'input': s, 'gold': q, 'output': {'answer': q, 'text': t}})
             

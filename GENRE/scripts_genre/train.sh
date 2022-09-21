@@ -29,7 +29,7 @@ fairseq-train $NAME/bin/ \
     --target-lang target  \
     --truncate-source  \
     --label-smoothing 0.1  \
-    --max-tokens 4096  \
+    --max-tokens 2048  \
     --update-freq 1  \
     --max-update 200000  \
     --required-batch-size-multiple 1  \
